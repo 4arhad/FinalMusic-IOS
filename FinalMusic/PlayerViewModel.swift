@@ -33,6 +33,7 @@ final class PlayerViewModel: ObservableObject {
 
     private var player: AVPlayer?
     private var timeObserver: Any?
+    private var endObserver: NSObjectProtocol?
     /// Monotonic load counter: rapid next()/next() launches overlapping resolves,
     /// and the LAST one must win — without this, the earlier tap's slower resolve
     /// can clobber the newer track.
@@ -49,13 +50,7 @@ final class PlayerViewModel: ObservableObject {
         // against mediaserverd on physical devices -> black screen at launch.
         // The session is configured lazily when a stream is loaded.
         configureRemoteCommands()
-        NotificationCenter.default.addObserver(
-            forName: AVPlayerItem.didPlayToEndTimeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.advance() }
-        }
+
     }
 
     // Deep-link playback (lastwave://play/<videoId>), mirroring the Android
@@ -342,6 +337,26 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
+    private func observeEnd(of item: AVPlayerItem) {
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        endObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.didPlayToEndTimeNotification,
+            object: item,
+            queue: .main
+        ) { [weak self, weak item] _ in
+            Task { @MainActor in
+                guard let self, let item else { return }
+                self.advanceIfCurrentItemEnded(item)
+            }
+        }
+    }
+
+    private func advanceIfCurrentItemEnded(_ item: AVPlayerItem) {
+        guard player?.currentItem === item, isPlaying else { return }
+        NSLog("LWQUEUE item_ended advancing")
+        advance()
+    }
+
     private func ensurePlayer() -> AVPlayer {
         if let player { return player }
         let newPlayer = AVPlayer()
@@ -351,7 +366,22 @@ final class PlayerViewModel: ObservableObject {
         timeObserver = newPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             Task { @MainActor in
                 guard let self else { return }
+                guard time.seconds.isFinite else { return }
                 self.currentTime = max(0, time.seconds)
+                // End notifications are the primary signal. A stalled proxy
+                // sometimes leaves AVPlayer running beyond the reported media
+                // duration, so also detect a finished *item* only when the
+                // player is no longer waiting for more media. Do not use the
+                // metadata duration alone: it may be inaccurate.
+                if let item = self.player?.currentItem,
+                   item.status == .readyToPlay,
+                   item.isPlaybackLikelyToKeepUp,
+                   self.player?.timeControlStatus == .paused,
+                   self.isPlaying,
+                   self.duration > 0,
+                   self.currentTime >= self.duration + 1 {
+                    self.advanceIfCurrentItemEnded(item)
+                }
                 self.evaluateScrobble()
                 self.flushPlayTimeIfDue()
             }
@@ -474,6 +504,7 @@ final class PlayerViewModel: ObservableObject {
                 }
                 let p = self.ensurePlayer()
                 p.replaceCurrentItem(with: item)
+                self.observeEnd(of: item)
                 self.watchItemFailure(item)
                 if let index = self.currentIndex { self.prefetchNext(after: index) }
                 // Do not block playback on an AVURLAsset duration request.
@@ -539,6 +570,7 @@ final class PlayerViewModel: ObservableObject {
             currentToken = proxyURL.lastPathComponent
             let item = makeItem(for: proxyURL)
             ensurePlayer().replaceCurrentItem(with: item)
+            observeEnd(of: item)
             watchItemFailure(item)
             ensurePlayer().play()
             if let index = currentIndex { prefetchNext(after: index) }
