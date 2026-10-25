@@ -1,0 +1,32 @@
+.DS_Store
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.env
+.env.*
+*.p12
+*.mobileprovision
+*.cer
+*.key
+
+# Swift Build
+.build/
+.build-metadata.json
+.swiftpm/
+derived/
+DerivedData/
+build/
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+.DS_Store
+
+# Secrets
+.env
+.env.*
+*.p12
+*.mobileprovision
+*.cer
+*.key

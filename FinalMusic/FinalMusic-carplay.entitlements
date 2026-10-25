@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	CarPlay audio support. This entitlement is approval-gated: request
+	com.apple.developer.carplay-audio at
+	https://developer.apple.com/contact/request/carplay/ , add it to the App ID,
+	then set CODE_SIGN_ENTITLEMENTS=FinalMusic/FinalMusic-carplay.entitlements in the
+	build configuration you ship. It is deliberately NOT wired into the default
+	build: signing a personal/CI profile without the capability fails the whole
+	app build, and the phone app is fully functional without CarPlay.
+	-->
+	<key>com.apple.developer.carplay-audio</key>
+	<true/>
+	<key>com.apple.developer.carplay-music</key>
+	<true/>
+</dict>
+</plist>
