@@ -467,12 +467,15 @@ final class YouTubeAccount: ObservableObject {
     }
 
     private func finishBrowserSignIn(_ token: YouTubeToken) async {
-        self.token = token
-        YouTubeKeychain.saveToken(token.json)
-        credential = nil
-        YouTubeKeychain.clearCookieHeader()
         do {
+            // Google approving a device code does not prove that WEB_REMIX
+            // accepts its OAuth token. Validate before persisting it or
+            // discarding a previously working cookie session.
             let name = try await InnerTube.accountName(auth: InnerTubeAuth(bearer: token.accessToken))
+            self.token = token
+            YouTubeKeychain.saveToken(token.json)
+            credential = nil
+            YouTubeKeychain.clearCookieHeader()
             UserDefaults.standard.set(name, forKey: Self.nameKey)
             status = .connected(name: name)
             message = "Signed in as \(name)."
@@ -481,10 +484,15 @@ final class YouTubeAccount: ObservableObject {
                 await syncLikedSongs(into: LikedStore.shared)
             }
         } catch {
-            // Reachable in one real case: Google approved the account but the
-            // music API still refuses the token.
+            // Do not retain a token that failed the music API validation.
+            // In particular, restore() must not report it as connected on
+            // the next launch. A pre-existing cookie session is preserved.
             NSLog("LWOAUTH bearer_rejected error=%@", String(describing: error))
-            status = .failed("Google approved the sign-in, but YouTube Music refused the session (\(error.localizedDescription))")
+            if credential == nil {
+                self.token = nil
+                YouTubeKeychain.clearToken()
+            }
+            status = .failed("Google sign-in succeeded, but YouTube Music rejected the OAuth session (\(error.localizedDescription)). Try the cookie sign-in option; repeating Google approval alone may not resolve this.")
         }
     }
 
