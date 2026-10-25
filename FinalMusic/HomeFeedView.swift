@@ -126,11 +126,12 @@ struct HomeFeedView: View {
         // away), and wiping shelves first turned that routine cancellation
         // into a permanent "Could not load the feed / cancelled" over what
         // used to be a working screen. Content is replaced only on success.
+        let requestedSource = source
         if shelves.isEmpty { isLoading = true }
         errorText = nil
         do {
-            var loaded = try await InnerTube.browseShelves(source.browseId)
-            if source == .charts, !loaded.contains(where: \.hasPlayableTracks) {
+            var loaded = try await InnerTube.browseShelves(requestedSource.browseId)
+            if requestedSource == .charts, !loaded.contains(where: \.hasPlayableTracks) {
                 // Charts serves "Top artists" and "Video charts" to anonymous
                 // clients; the songs chart row list comes back empty (it is a
                 // signed-in surface now). Fill the tab with the home feed's own
@@ -140,9 +141,9 @@ struct HomeFeedView: View {
                     loaded.insert(trending, at: 0)
                 }
             }
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, source == requestedSource else { return }
             if !loaded.isEmpty {
-                HomeFeedCache.save(loaded, browseId: source.browseId)
+                HomeFeedCache.save(loaded, browseId: requestedSource.browseId)
                 // The port's take on Android's history-led shelf: "Quick picks"
                 // becomes the last-played music whenever the device has
                 // listening history (the Android feed leads it with Room
@@ -150,7 +151,7 @@ struct HomeFeedView: View {
                 // YouTube's own picks. The cache stores the raw feed; this
                 // synthesis re-runs after every load.
                 var displayed = loaded
-                if source == .home, !HistoryStore.shared.tracks.isEmpty,
+                if requestedSource == .home, !HistoryStore.shared.tracks.isEmpty,
                    let idx = displayed.firstIndex(where: { $0.title.lowercased().hasPrefix("quick pick") }) {
                     displayed[idx] = HomeShelf(title: "Quick picks",
                                                items: HistoryStore.shared.tracks.prefix(20).map { HomeItem.track($0) })
@@ -171,18 +172,18 @@ struct HomeFeedView: View {
             } else if shelves.isEmpty {
                 errorText = "This feed returned no shelves."
             }
-            NSLog("LWHOME %@ -> %@", source.browseId,
+            NSLog("LWHOME %@ -> %@", requestedSource.browseId,
                   loaded.map { "\($0.title)[\($0.items.count) tracks:\($0.hasPlayableTracks)]" }
                       .joined(separator: " | "))
         } catch {
             // A cancelled request is not an error the user should see: it
             // means the refresh control idled or the chip switched — the
             // successor load publishes when it finishes.
-            if !Task.isCancelled, shelves.isEmpty {
+            if !Task.isCancelled, source == requestedSource, shelves.isEmpty {
                 errorText = error.localizedDescription
             }
         }
-        isLoading = false
+        if source == requestedSource { isLoading = false }
     }
 }
 
