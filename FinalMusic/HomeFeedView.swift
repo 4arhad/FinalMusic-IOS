@@ -59,11 +59,17 @@ struct HomeFeedView: View {
                     Text("Built from what you actually listen to")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Spacer()
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
+            .padding(14)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
             .padding(.horizontal)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("For You, personalized music")
     }
 
     var body: some View {
@@ -78,13 +84,15 @@ struct HomeFeedView: View {
                                            description: Text(errorText))
                         .frame(maxWidth: .infinity)
                 } else {
-                    ForEach(shelves) { shelf in
+                    LazyVStack(alignment: .leading, spacing: 24) {
+                        ForEach(shelves) { shelf in
                         HomeShelfView(shelf: shelf)
                             .environmentObject(player)
+                        }
                     }
                 }
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, 12)
         }
         .navigationTitle("Home")
         .refreshable { await load() }
@@ -102,18 +110,21 @@ struct HomeFeedView: View {
             HStack(spacing: 8) {
                 ForEach(Source.allCases) { candidate in
                     Button {
-                        source = candidate
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            source = candidate
+                        }
                     } label: {
                         Text(candidate.rawValue)
-                            .font(.subheadline)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
-                            .background(candidate == source ? AnyShapeStyle(Color.accentColor.opacity(0.18))
+                            .font(.subheadline.weight(candidate == source ? .semibold : .medium))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(candidate == source ? AnyShapeStyle(Color.accentColor)
                                                             : AnyShapeStyle(.quaternary.opacity(0.5)),
                                         in: Capsule())
-                            .foregroundStyle(candidate == source ? Color.accentColor : Color.primary)
+                            .foregroundStyle(candidate == source ? Color.white : Color.primary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(candidate == source ? .isSelected : [])
                 }
             }
             .padding(.horizontal)
@@ -195,14 +206,19 @@ struct HomeShelfView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(shelf.title).font(.headline)
+                Text(shelf.title).font(.title3.weight(.bold))
                 Spacer()
                 let tracks = shelf.items.compactMap { item -> MusicTrack? in
                     if case .track(let t) = item { return t } else { return nil }
                 }
                 if !tracks.isEmpty {
-                    Button("Play all") { player.playQueue(tracks, startingAt: 0) }
-                        .font(.caption)
+                    Button {
+                        player.playQueue(tracks, startingAt: 0)
+                    } label: {
+                        Label("Play all", systemImage: "play.fill")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
             .padding(.horizontal)
@@ -245,7 +261,7 @@ struct Card: View {
         VStack(alignment: .leading, spacing: 6) {
             Artwork(url: artwork, size: 150)
             Text(title)
-                .font(.subheadline)
+                .font(.subheadline.weight(.medium))
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
             Text(subtitle)
