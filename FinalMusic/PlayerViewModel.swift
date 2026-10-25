@@ -34,6 +34,7 @@ final class PlayerViewModel: ObservableObject {
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
+    private var playbackStatusObserver: NSKeyValueObservation?
     /// Monotonic load counter: rapid next()/next() launches overlapping resolves,
     /// and the LAST one must win — without this, the earlier tap's slower resolve
     /// can clobber the newer track.
@@ -361,6 +362,16 @@ final class PlayerViewModel: ObservableObject {
         if let player { return player }
         let newPlayer = AVPlayer()
         player = newPlayer
+        playbackStatusObserver = newPlayer.observe(\.timeControlStatus, options: [.new]) { [weak self] observed, _ in
+            Task { @MainActor in
+                guard let self, observed.timeControlStatus == .paused,
+                      let item = observed.currentItem, self.isPlaying,
+                      item.status == .readyToPlay,
+                      self.duration > 0,
+                      self.currentTime >= self.duration + 1 else { return }
+                self.advanceIfCurrentItemEnded(item)
+            }
+        }
         configureRemoteCommands()
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         timeObserver = newPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
