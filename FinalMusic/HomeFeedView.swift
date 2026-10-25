@@ -36,6 +36,9 @@ struct HomeFeedView: View {
     @State private var isLoading: Bool
     @State private var errorText: String?
 
+    private let midnight = Color(red: 0.035, green: 0.055, blue: 0.12)
+    private let glow = Color(red: 0.40, green: 0.86, blue: 0.82)
+
     init() {
         let parsed = Source.parse(UserDefaults.standard.string(forKey: "StartChip")) ?? .home
         _source = State(initialValue: parsed)
@@ -49,13 +52,17 @@ struct HomeFeedView: View {
     private var forYouCard: some View {
         NavigationLink(value: Route.forYou) {
             HStack(spacing: 12) {
-                Image(systemName: "wand.and.stars")
-                    .font(.title2)
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 48, height: 48)
-                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                Image(systemName: "waveform.path")
+                    .font(.title2.weight(.medium))
+                    .foregroundStyle(glow)
+                    .frame(width: 52, height: 52)
+                    .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 15))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("For You").font(.headline)
+                    Text("YOUR FREQUENCY")
+                        .font(.caption2.weight(.bold))
+                        .tracking(2)
+                        .foregroundStyle(glow)
+                    Text("For You").font(.title3.weight(.bold))
                     Text("Built from what you actually listen to")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -65,7 +72,12 @@ struct HomeFeedView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(14)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+            .background(
+                LinearGradient(colors: [midnight, Color(red: 0.13, green: 0.13, blue: 0.29)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing),
+                in: RoundedRectangle(cornerRadius: 22)
+            )
+            .foregroundStyle(.white)
             .padding(.horizontal)
         }
         .buttonStyle(.plain)
@@ -75,6 +87,15 @@ struct HomeFeedView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
+                HStack(spacing: 9) {
+                    Image(systemName: "waveform")
+                        .foregroundStyle(glow)
+                    Text("FINAL MUSIC")
+                        .tracking(3)
+                }
+                .font(.caption.weight(.bold))
+                .padding(.horizontal)
+                .accessibilityAddTraits(.isHeader)
                 chips
                 forYouCard
                 if isLoading && shelves.isEmpty {
@@ -94,7 +115,7 @@ struct HomeFeedView: View {
             }
             .padding(.vertical, 12)
         }
-        .navigationTitle("Home")
+        .navigationTitle("Discover")
         .refreshable { await load() }
         .task { await load() }
         .onChange(of: source) { _, newSource in
@@ -118,10 +139,10 @@ struct HomeFeedView: View {
                             .font(.subheadline.weight(candidate == source ? .semibold : .medium))
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
-                            .background(candidate == source ? AnyShapeStyle(Color.accentColor)
+                            .background(candidate == source ? AnyShapeStyle(midnight)
                                                             : AnyShapeStyle(.quaternary.opacity(0.5)),
                                         in: Capsule())
-                            .foregroundStyle(candidate == source ? Color.white : Color.primary)
+                            .foregroundStyle(candidate == source ? glow : Color.primary)
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(candidate == source ? .isSelected : [])
