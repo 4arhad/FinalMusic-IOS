@@ -223,9 +223,15 @@ extension InnerTube {
         let config = await webConfig()
         var headers = webHeaders(config.clientVersion)
         for (name, value) in auth.headers() { headers[name] = value }
+        // The context and X-YouTube-Client-Version header must describe the
+        // same client version. webContext() uses a static fallback version,
+        // which may differ from the bootstrapped version in the headers.
+        var authenticatedBody = body
+        authenticatedBody["context"] = context("WEB_REMIX", config.clientVersion,
+                                               visitorData: config.visitorData)
         return try await postJSON(
             url: "\(musicAPI)/\(path)?key=\(config.apiKey)&prettyPrint=false",
-            body: body,
+            body: authenticatedBody,
             headers: headers
         )
     }
