@@ -35,6 +35,7 @@ final class PlayerViewModel: ObservableObject {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var playbackStatusObserver: NSKeyValueObservation?
+    private var endWatchdog: Task<Void, Never>?
     /// Monotonic load counter: rapid next()/next() launches overlapping resolves,
     /// and the LAST one must win — without this, the earlier tap's slower resolve
     /// can clobber the newer track.
@@ -338,6 +339,36 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
+    /// Some proxy streams never emit didPlayToEndTime even though the audio
+    /// is silent and AVPlayer's timeline keeps advancing. A bounded watchdog
+    /// detects substantial overrun without skipping at the metadata boundary.
+    private func startEndWatchdog(for item: AVPlayerItem, sequence: Int) {
+        endWatchdog?.cancel()
+        endWatchdog = Task { [weak self, weak item] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled, let self, let item,
+                      self.loadSequence == sequence,
+                      self.player?.currentItem === item else { return }
+                guard self.isPlaying, !self.buffering, self.duration > 0 else { continue }
+                let elapsed = item.currentTime().seconds
+                guard elapsed.isFinite, elapsed >= self.duration + 15 else { continue }
+                // A genuine track may be longer than the supplied metadata.
+                // Only recover when AVPlayer's item has reached its own
+                // reported end, or playback is no longer advancing normally.
+                let itemDuration = item.duration.seconds
+                let itemEnded = itemDuration.isFinite && itemDuration > 0 &&
+                    elapsed >= itemDuration + 2
+                let stalled = self.player?.timeControlStatus != .playing
+                guard itemEnded || stalled else { continue }
+                NSLog("LWQUEUE watchdog end elapsed=%.1f metadata=%.1f item=%.1f",
+                      elapsed, self.duration, itemDuration)
+                self.advanceIfCurrentItemEnded(item)
+                return
+            }
+        }
+    }
+
     private func observeEnd(of item: AVPlayerItem) {
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = NotificationCenter.default.addObserver(
@@ -466,6 +497,7 @@ final class PlayerViewModel: ObservableObject {
 
     private func loadTrack(at index: Int) {
         guard queue.indices.contains(index) else { return }
+        endWatchdog?.cancel()
         configureAudioSessionIfNeeded()
         currentIndex = index
         didScrobble = false
@@ -525,6 +557,7 @@ final class PlayerViewModel: ObservableObject {
                 p.play()
                 self.isPlaying = true
                 self.buffering = false
+                self.startEndWatchdog(for: item, sequence: sequence)
                 self.refreshNowPlaying()
                 self.postNowPlayingToLastFm(track: track)
                 self.loadArtwork(from: track.artwork)
@@ -583,6 +616,7 @@ final class PlayerViewModel: ObservableObject {
             ensurePlayer().replaceCurrentItem(with: item)
             observeEnd(of: item)
             watchItemFailure(item)
+            startEndWatchdog(for: item, sequence: loadSequence)
             ensurePlayer().play()
             if let index = currentIndex { prefetchNext(after: index) }
             isPlaying = true
