@@ -465,7 +465,6 @@ final class PlayerViewModel: ObservableObject {
                 let proxyURL = URL(string: try await LocalStreamProxy.shared.register(stream))!
                 currentToken = proxyURL.lastPathComponent
                 NSLog("LWPROXY asset url: %@", proxyURL.absoluteString)
-                let asset = AVURLAsset(url: proxyURL)
                 let item = self.makeItem(for: proxyURL)
                 guard sequence == self.loadSequence else {
                     // A newer load started while this resolve was in flight;
@@ -477,12 +476,13 @@ final class PlayerViewModel: ObservableObject {
                 p.replaceCurrentItem(with: item)
                 self.watchItemFailure(item)
                 if let index = self.currentIndex { self.prefetchNext(after: index) }
-                let loadedDuration = (try? await asset.load(.duration).seconds) ?? 0
-                self.duration = stream.durationSeconds
-                    ?? (loadedDuration > 0 ? loadedDuration : Double(track.durationSeconds ?? 0))
-                self.buffering = false
+                // Do not block playback on an AVURLAsset duration request.
+                // That request may wait on the proxy/network even though we
+                // already know the duration from extraction or queue metadata.
+                self.duration = stream.durationSeconds ?? Double(track.durationSeconds ?? 0)
                 p.play()
                 self.isPlaying = true
+                self.buffering = false
                 self.refreshNowPlaying()
                 self.postNowPlayingToLastFm(track: track)
                 self.loadArtwork(from: track.artwork)
